@@ -1,4 +1,8 @@
 /* Readability pass for labels and problem cards. */
+.automation-head > p:not(.eyebrow) {
+  display: none;
+}
+
 .kicker,
 .eyebrow,
 .industries .eyebrow,
