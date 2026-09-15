@@ -1,0 +1,77 @@
+/* Readability pass for labels and problem cards. */
+.kicker,
+.eyebrow,
+.industries .eyebrow,
+.business-problem-grid small,
+.tool-belt-label,
+.story-copy small,
+.industry-demo > div > small,
+.contact-details span {
+  color: var(--orange);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.business-problem-grid article {
+  min-height: 350px;
+  padding: 32px;
+}
+
+.business-problem-grid article > span {
+  width: 46px;
+  height: 46px;
+  font-size: 11px;
+}
+
+.business-problem-grid small {
+  margin-top: 42px;
+}
+
+.business-problem-grid h3 {
+  font-size: 25px;
+  line-height: 1.2;
+}
+
+.business-problem-grid p {
+  max-width: 92%;
+  color: #4d5551;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.business-problem-grid b {
+  left: 32px;
+  right: 32px;
+  bottom: 28px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+@media (max-width: 650px) {
+  .kicker,
+  .eyebrow,
+  .industries .eyebrow,
+  .business-problem-grid small,
+  .tool-belt-label,
+  .story-copy small,
+  .industry-demo > div > small,
+  .contact-details span {
+    font-size: 10px;
+  }
+
+  .business-problem-grid article {
+    min-height: 320px;
+    padding: 26px;
+  }
+
+  .business-problem-grid p {
+    font-size: 12px;
+  }
+
+  .business-problem-grid b {
+    left: 26px;
+    right: 26px;
+    font-size: 9px;
+  }
+}
