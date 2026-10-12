@@ -137,16 +137,14 @@ export function Company({ studioUrl }: { studioUrl: string }) {
               <span /> VOICE TECHNOLOGY. HUMAN PURPOSE.
             </p>
             <h1>
-              Good things
+              Voice technology.
               <br />
-              start with
-              <br />
-              <em>a conversation.</em>
+              <em>Human possibilities.</em>
             </h1>
             <p className={styles.lead}>
-              We build voice technology around real businesses. Starting with AI
-              voice agents that take calls, handle the next step and give your
-              team time back.
+              Rev3 is a voice technology company. We build products and services
+              around the way people speak, listen and work. Made for real needs.
+              Shaped with the people who use them.
             </p>
             <div className={styles.actions}>
               <button
@@ -160,7 +158,7 @@ export function Company({ studioUrl }: { studioUrl: string }) {
               </a>
             </div>
             <p className={styles.micro}>
-              Built for your business. Shaped with people like you.
+              Products. Services. Ideas we build together.
             </p>
           </div>
           <div
@@ -182,41 +180,42 @@ export function Company({ studioUrl }: { studioUrl: string }) {
           </div>
         </section>
         <div className={styles.signalStrip}>
-          <span>Less missed opportunity</span>
+          <span>Voice products</span>
           <Plus />
-          <span>Less repetitive admin</span>
+          <span>Voice services</span>
           <Plus />
-          <span>More human time</span>
+          <span>Co-creation</span>
         </div>
         <section className={styles.section} id="services">
           <div className={styles.sectionHeading}>
-            <p className={styles.eyebrow}>01 / BUILT FOR YOU</p>
+            <p className={styles.eyebrow}>01 / THE WORLD OF REV3</p>
             <h2>
-              The phone shouldn’t
+              More ways to connect.
               <br />
-              run your business.
+              More ways to get things done.
             </h2>
             <p>
-              Missed calls. The same questions. Notes that never reach the right
-              person. We build voice agents to take that work off your plate.
+              We see voice as a more natural way to use technology. Our work brings
+              together products, tailored services and a co-creation programme
+              that helps us discover what people need next.
             </p>
           </div>
           <div className={styles.problemGrid}>
             {[
               {
                 n: "01",
-                title: "Be there when your team can’t.",
-                text: "Handle incoming enquiries after hours or when everyone is busy. Give callers a useful next step.",
+                title: "Voice agent services",
+                text: "One part of Rev3. We build agents that handle business calls, answer questions and move agreed tasks forward.",
               },
               {
                 n: "02",
-                title: "Give repeat questions a rest.",
-                text: "Answer from your approved business information. Capture names, needs and contact details.",
+                title: "Rev3 Studio",
+                text: "Our co-creation space. Explore voice technology with us, test an experience and help shape the products we build.",
               },
               {
                 n: "03",
-                title: "Keep the work moving.",
-                text: "Connect the right calendar, CRM or messaging tools. Agree what the agent can do and when your team takes over.",
+                title: "What comes next",
+                text: "New voice products and services are part of our direction. We start with real problems, test ideas and build what proves useful.",
               },
             ].map((p) => (
               <article key={p.n}>
@@ -229,7 +228,7 @@ export function Company({ studioUrl }: { studioUrl: string }) {
         </section>
         <section className={styles.callSection}>
           <div>
-            <p className={styles.eyebrow}>FROM HELLO TO WHAT’S NEXT</p>
+            <p className={styles.eyebrow}>ONE APPLICATION / VOICE AGENTS</p>
             <h2>{scenes[scene].title}</h2>
             <p>{scenes[scene].body}</p>
             <div className={styles.sceneButtons}>
@@ -296,8 +295,7 @@ export function Company({ studioUrl }: { studioUrl: string }) {
               We build the agent.
             </h2>
             <p>
-              We work through your calls, design the conversation, connect
-              agreed tools and test it with you before launch.
+              Missed calls, repetitive questions and follow-up admin take time from your team. Our voice agent service is built to help. We design the conversation, connect agreed tools and test it with you before launch.
             </p>
           </div>
           <div>
@@ -392,14 +390,12 @@ export function Company({ studioUrl }: { studioUrl: string }) {
         <section className={styles.future}>
           <p className={styles.eyebrow}>MORE THAN ONE PRODUCT</p>
           <h2>
-            Voice is where
+            Help shape what
             <br />
-            <em>we’re going.</em>
+            <em>voice becomes.</em>
           </h2>
           <p>
-            Voice agents are our starting point. Rev3 is a home for voice
-            products and services that make everyday work easier. Co-creation
-            helps us decide what deserves to come next.
+            We’re exploring new ways to interact with tools, turn speech into useful information and make everyday tasks feel more natural. Studio helps us test which ideas matter before we build them.
           </p>
         </section>
         <section className={styles.faq}>
@@ -409,6 +405,10 @@ export function Company({ studioUrl }: { studioUrl: string }) {
           </div>
           <div>
             {[
+              [
+                "What does Rev3 do?",
+                "Rev3 is a voice technology company. We build products and services around the way people speak, listen and work. Voice agents are one service we offer. Studio is our co-creation programme, helping shape the wider products and experiences we develop next.",
+              ],
               [
                 "What’s the difference between the service and Studio?",
                 "Build for me is for businesses that want us to deliver a voice agent service. Build with us is our co-creation programme: use Studio to test an agent and help shape what we build.",
