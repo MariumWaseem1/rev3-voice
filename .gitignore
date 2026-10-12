@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.env
+.env.local
+.data/
+test-results/
+playwright-report/
+*.tsbuildinfo
+worker/.venv/
+worker/.venv-linux/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+.next-production/

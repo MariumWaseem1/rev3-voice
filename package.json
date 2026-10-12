@@ -1,8 +1,54 @@
 {
+  "name": "rev3-reception",
+  "version": "1.0.0",
+  "private": true,
   "scripts": {
-    "start": "node server.js"
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "node scripts/start-production.cjs",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "maintenance": "tsx scripts/maintenance.ts",
+    "format": "prettier --write src scripts tests",
+    "postinstall": "next build"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@supabase/supabase-js": "2.117.2",
+    "dotenv": "18.0.5",
+    "drizzle-orm": "0.45.3",
+    "livekit-client": "2.22.3",
+    "livekit-server-sdk": "2.19.1",
+    "lucide-react": "1.52.0",
+    "luxon": "3.7.2",
+    "next": "16.3.8",
+    "pg": "8.23.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/compat": "2.1.1",
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/luxon": "3.7.6",
+    "@types/node": "26.6.4",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "eslint": "10.12.0",
+    "eslint-config-next": "16.3.8",
+    "prettier": "3.9.9",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
   },
   "engines": {
-    "node": ">=18"
-  }
+    "node": ">=22.0.0"
+  },
+  "packageManager": "pnpm@11.19.0"
 }
