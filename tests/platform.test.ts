@@ -689,6 +689,13 @@ describe("company applications and Studio access",()=>{
  expect((await one(sql`SELECT redeemed_at FROM studio_invitations`)).redeemed_at).not.toBeNull();
  }finally{delete process.env.SUPABASE_URL;delete process.env.SUPABASE_ANON_KEY;}
  });
+ it("does not consume invitations when email verification fails",async()=>{
+ const invite=await issueInvitation({...user,admin:true},lead.email,false);jar.clear();
+ process.env.SUPABASE_URL='https://example.supabase.co';process.env.SUPABASE_ANON_KEY='test';
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({msg:'Invalid OTP',error_code:'otp_expired'}),{status:403,headers:{'Content-Type':'application/json'}})));
+ try {await expect(login(lead.email,'123456',invite.code)).rejects.toThrow('invalid or expired');expect(jar.has('rev3_session')).toBe(false);expect((await one(sql`SELECT redeemed_at FROM studio_invitations`)).redeemed_at).toBeNull();expect(await rows(sql`SELECT * FROM studio_members`)).toHaveLength(0);}
+ finally{delete process.env.SUPABASE_URL;delete process.env.SUPABASE_ANON_KEY;}
+ });
  it("rejects expired invitations and existing unapproved sessions",async()=>{
  process.env.STUDIO_INVITE_REQUIRED="true";await expect(identity()).rejects.toThrow("invitation required");
  await expect(redeemInvitation("invalid-code-with-more-than-thirty-characters",lead.email)).rejects.toThrow("invalid");

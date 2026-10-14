@@ -70,7 +70,10 @@ export async function login(email: string, token?: string, inviteCode?: string) 
   if(inviteCode) await approveVerifiedInvitation(canonicalEmail,inviteCode);
   else requireThat(await approvedEmail(canonicalEmail),403,"Studio approval is required.");
   const invited=await one<{provider_id:string}>(sql`SELECT provider_id FROM users WHERE lower(email)=${canonicalEmail} AND provider_id LIKE 'invitation-%' LIMIT 1`);
-  if(invited) await locked(tx=>tx.execute(sql`UPDATE users SET provider_id=${verifiedId} WHERE provider_id=${invited.provider_id}`));
+  if(invited) await locked(async tx=>{
+    await tx.execute(sql`DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE provider_id=${invited.provider_id})`);
+    await tx.execute(sql`UPDATE users SET provider_id=${verifiedId} WHERE provider_id=${invited.provider_id}`);
+  });
   await establish(data.user.id, canonicalEmail);
   return { verified: true };
 }
