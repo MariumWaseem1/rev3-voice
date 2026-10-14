@@ -1,0 +1,21 @@
+"use client";
+import {AdminAccess} from "./admin-access";
+import {useEffect,useState} from 'react';
+import Link from 'next/link';
+type Person={id:string;email:string;business:string;created_at:string;calls:number};
+type Overview={counts:{users:number;calls:number;bookings:number;applications:number};people:Person[];posthogConfigured:boolean};
+type Detail={person:{email:string};calls:{id:string;state:string;reserved_at:string;error:string|null}[];bookings:{id:string;service_name:string;customer:string;starts_at:string;status:string;reference:string}[]};
+type Conversation={turns:{id:string;role:string;text:string}[];actions:{name:string;status:string;result:{message?:string}}[]};
+async function get<T>(url:string):Promise<T>{const r=await fetch(url,{cache:'no-store'});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not load admin data');return d;}
+export function AdminDashboard(){
+ const [overview,setOverview]=useState<Overview|null>(null),[detail,setDetail]=useState<Detail|null>(null),[conversation,setConversation]=useState<Conversation|null>(null),[error,setError]=useState(''),[search,setSearch]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{get<Overview>('/api/admin/overview').then(setOverview).catch(e=>setError(e.message));},[]);
+ const date=(v:string)=>new Date(v).toLocaleString('en-GB');
+ return <main className="admin-dashboard"><header><p className="eyebrow">REV3 / OWNER ONLY</p><h1>Studio activity</h1><p>Sign-ups, saved calls and bookings.</p><Link href="/studio">Back to Studio</Link></header>{error&&<p role="alert">{error}</p>}
+ {!overview?<p>Loading activity…</p>:<><section className="admin-metrics">{Object.entries(overview.counts).map(([label,value])=><div className="card" key={label}><strong>{value}</strong><span>{label}</span></div>)}</section>
+ <AdminAccess/><section className="card"><h2>PostHog</h2>{overview.posthogConfigured?<a href="/api/admin/posthog" target="_blank" rel="noreferrer">Open private PostHog analytics ↗</a>:<p>Not connected yet. Your sign-ups and saved calls below are already available from Studio. Connect your PostHog project for product analytics.</p>}</section>
+ <section className="card"><h2>People</h2><label>Find a person or business<input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Email or business name"/></label><p>Showing the latest 200 accounts.</p><div className="recap-table-scroll"><table className="recap-table"><thead><tr><th>Account</th><th>Business</th><th>Joined</th><th>Calls</th><th>Review</th></tr></thead><tbody>{overview.people.filter(p=>`${p.email} ${p.business||''}`.toLowerCase().includes(search.toLowerCase())).map(p=><tr key={p.id}><td>{p.email}</td><td>{p.business||'Setup not saved'}</td><td>{date(p.created_at)}</td><td>{p.calls}</td><td><button disabled={busy} onClick={async()=>{setBusy(true);setError('');setConversation(null);setDetail(null);try{setDetail(await get(`/api/admin/person?id=${p.id}`));}catch(e){setError(e instanceof Error?e.message:'Could not load person');}finally{setBusy(false);}}}>View activity</button></td></tr>)}</tbody></table></div></section></>}
+ {detail&&<section className="card"><h2>{detail.person.email}</h2><h3>Calls</h3>{!detail.calls.length&&<p>No calls saved.</p>}{detail.calls.map(c=><div className="record" key={c.id}><span>{date(c.reserved_at)} · {c.state}</span><button disabled={busy} onClick={async()=>{setBusy(true);setError('');setConversation(null);try{setConversation(await get(`/api/admin/conversation?id=${c.id}`));}catch(e){setError(e instanceof Error?e.message:'Could not load call');}finally{setBusy(false);}}}>Read conversation</button>{c.error&&<p>{c.error}</p>}</div>)}<h3>Bookings</h3>{!detail.bookings.length&&<p>No bookings saved.</p>}{detail.bookings.map(b=><p key={b.id}>{date(b.starts_at)} · {b.service_name} · {b.customer} · {b.status} · {b.reference}</p>)}</section>}
+ {conversation&&<section className="card"><h2>Saved conversation</h2>{!conversation.turns.length&&<p>No transcript was saved for this call.</p>}{conversation.turns.map(t=><div className="record" key={t.id}><strong>{t.role==='user'?'Caller':'Agent'}</strong><p>{t.text}</p></div>)}<h3>Actions</h3>{conversation.actions.map((a,i)=><p key={i}>{a.name.replaceAll('_',' ')} · {a.status} · {a.result.message}</p>)}</section>}
+ </main>;
+}

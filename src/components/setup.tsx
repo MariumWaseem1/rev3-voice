@@ -3,10 +3,13 @@ import { useState } from "react";
 import { ArrowRight, Plus, X } from "lucide-react";
 import { categories, taskOptions } from "@/lib/catalogue";
 import { type Configuration, missingConfiguration } from "@/lib/schemas";
+import { SetupSlots, type SlotDraft } from "./setup-slots";
 import { Field, Area } from "./ui";
 type Props = { value: Configuration; change: (v: Configuration) => void; save: () => Promise<boolean>; saved: boolean; next: () => void; generate: (prompt: string) => Promise<Configuration>; compose: (c: Configuration) => Promise<string>; busy: boolean };
 const handovers = ["The caller asks to speak to a person", "The agent cannot answer the question", "The caller has a complaint", "The caller needs help with an existing booking"];
 export function Setup({value:c,change,save,saved,next,busy}:Props) {
+  const [draftSlots,setDraftSlots]=useState<SlotDraft[]>([]);
+  const [savingSlots,setSavingSlots]=useState(false);
   const [savedHere,setSavedHere]=useState(false);
   const [saveNotice,setSaveNotice]=useState("");
   const [intervention,setIntervention]=useState<boolean | null>(c.reviewed ? c.handover!=="No handover" : null);
@@ -18,7 +21,7 @@ export function Setup({value:c,change,save,saved,next,busy}:Props) {
   const toggleTask=(task:Configuration["tasks"][number])=>{update("tasks",c.tasks.includes(task)?c.tasks.filter(t=>t!==task):[...c.tasks,task]);setMessage("What would you like me to help with?");};
   return <div className="guided-setup">
     <aside className="setup-guide" aria-live="polite"><div className="talking-orb setup-orb"><svg className="guide-face" viewBox="0 0 80 40" aria-hidden="true"><ellipse fill="currentColor" cx="27" cy="17" rx="5" ry="7"/><ellipse fill="currentColor" cx="53" cy="17" rx="5" ry="7"/></svg><p>{savedHere&&saved?"Your changes are saved. Ready to choose a voice?":message}</p></div></aside>
-    <form className="glass-setup-form" onSubmit={async e=>{e.preventDefault();const missing=missingConfiguration(c);if(!c.tasks.length)missing.push("Choose at least one agent task");if(intervention===null)missing.push("Choose Yes or No for human intervention");if(intervention&&!c.handover.trim())missing.push("Choose when a person should help");if(missing.length){setSaveNotice("Before saving: "+missing.join("; "));return;}setSaveNotice("");const ok=await save();setSavedHere(ok);if(!ok)setSaveNotice("Your setup could not be saved. Please check the error above and try again.");}}>
+    <form className="glass-setup-form" onSubmit={async e=>{e.preventDefault();const missing=missingConfiguration(c);if(!c.tasks.length)missing.push("Choose at least one agent task");if(intervention===null)missing.push("Choose Yes or No for human intervention");if(intervention&&!c.handover.trim())missing.push("Choose when a person should help");if(missing.length){setSaveNotice("Before saving: "+missing.join("; "));return;}setSaveNotice("");let ok=await save();if(ok&&draftSlots.length){setSavingSlots(true);try{for(const slot of draftSlots){const response=await fetch('/api/bookings/slots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:'add',...slot})});const result=await response.json();if(!response.ok)throw Error(result.error||'Could not save this slot.');setDraftSlots(current=>current.filter(s=>s!==slot));}}catch(error){ok=false;setSaveNotice(error instanceof Error?error.message:'Could not save slots.');}finally{setSavingSlots(false);}}setSavedHere(ok);if(!ok)setSaveNotice(current=>current||"Your setup could not be saved. Please check the error above and try again.");}}>
       <header><p className="eyebrow">YOUR BUSINESS / 01</p><h1>Tell me about your business.</h1><p>A few details, then choose what your agent can do.</p></header>
       <fieldset onFocus={()=>setMessage("Please fill in your business details.")}><legend>Your business</legend>
         <div className="form-grid"><Field label="Business name" required maxLength={200} value={c.businessName} onChange={e=>update("businessName",e.target.value)}/><Field label="Agent name" required maxLength={200} value={c.receptionistName} onChange={e=>update("receptionistName",e.target.value)}/></div>
@@ -42,13 +45,14 @@ export function Setup({value:c,change,save,saved,next,busy}:Props) {
         {c.faqs.map((faq,i)=><div key={i}><Field label="Question" required value={faq.question} onChange={e=>update("faqs",c.faqs.map((f,j)=>i===j?{...f,question:e.target.value}:f))}/><Area label="Answer" required value={faq.answer} onChange={e=>update("faqs",c.faqs.map((f,j)=>i===j?{...f,answer:e.target.value}:f))}/><button type="button" className="text-button" onClick={()=>update("faqs",c.faqs.filter((_,j)=>i!==j))}>Remove question</button></div>)}
         <button type="button" className="text-button" disabled={c.faqs.length>=30} onClick={()=>update("faqs",[...c.faqs,{question:"",answer:""}])}><Plus size={15}/> Add common question</button>
       </details>
+      <SetupSlots configuration={c} drafts={draftSlots} change={setDraftSlots}/>{!c.tasks.includes("Demo appointments")&&<p>To let your agent book these times, select <strong>Demo appointments</strong> under agent tasks.</p>}
       <label className="check-line"><input type="checkbox" checked={c.reviewed} onChange={e=>update("reviewed",e.target.checked)}/> These details are correct.</label>
       {saveNotice&&<p role="alert" className="setup-save-notice">{saveNotice}</p>}
       <div className="setup-save-actions">
-        <button type="submit" className="secondary" disabled={busy||saved}>{busy?"Saving…":saved?"Saved":"Save my setup"}</button>
-        <button type="button" className="primary" disabled={busy||!saved} onClick={next}>Next: choose a voice <ArrowRight size={18}/></button>
+        <button type="submit" className="secondary" disabled={busy||savingSlots||(saved&&!draftSlots.length)}>{busy?"Saving…":saved?"Saved":"Save my setup"}</button>
+        <button type="button" className="primary" disabled={busy||savingSlots||!saved||draftSlots.length>0} onClick={next}>Next: choose a voice <ArrowRight size={18}/></button>
       </div>
-      <p role="status">{saved ? (savedHere?"Your business setup is saved. You can continue.":"Your saved setup is ready. You can continue or edit it.") : "Save your setup to continue to voices."}</p>
+      <p role="status">{saved&&!draftSlots.length ? (savedHere?"Your business setup is saved. You can continue.":"Your saved setup is ready. You can continue or edit it.") : "Save your setup to continue to voices."}</p>
     </form>
   </div>;
 }

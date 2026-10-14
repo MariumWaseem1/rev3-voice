@@ -1,5 +1,9 @@
+import { accessOverview, manageAccess } from "@/lib/studio-access";
+import {adminOverview,adminPerson,adminConversation} from "@/lib/admin";
+import { bookingDashboard, editSlot } from "@/lib/bookings";
 import { receiveEnquiry, issueInvitation, redeemInvitation, companyLeads } from "@/lib/company";
-import { NextResponse } from "next/server";
+import { analyticsEvent, captureStudioEvent, posthogConfigured } from "@/lib/analytics";
+import { after, NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { randomUUID } from "node:crypto";
 import { identity, login, logout, developmentLogin } from "@/lib/auth";
@@ -67,6 +71,7 @@ async function handler(request: Request, context: Context) {
         const v = z
           .object({
             email: z.email().max(254),
+            inviteCode: z.string().trim().min(30).max(100).optional(),
             token: z
               .string()
               .regex(/^\d{6,10}$/)
@@ -74,7 +79,7 @@ async function handler(request: Request, context: Context) {
           })
           .strict()
           .parse(body);
-        return login(v.email, v.token);
+        return login(v.email, v.token, v.inviteCode);
       }
       if (route === "auth/development" && method === "POST") {
         await developmentLogin();
@@ -85,11 +90,15 @@ async function handler(request: Request, context: Context) {
         return { ok: true };
       }
       if(route === "public/enquiry" && method === "POST") return receiveEnquiry(body);
-      if(route === "auth/invite" && method === "POST") return redeemInvitation(body.code);
+      if(route === "auth/invite" && method === "POST") return redeemInvitation(body.code,body.email,z.string().regex(/^\d{6,10}$/).optional().parse(body.token));
       const u = await identity();
       if(route === "admin/enquiries" && method === "GET") return {enquiries:await companyLeads(u)};
-      if(route === "admin/invite" && method === "POST") return issueInvitation(u,body.email);
+      if(route === "admin/invite" && method === "POST") return issueInvitation(u,body.email,z.boolean().optional().parse(body.deliver) ?? true);
+      if(route === "admin/access" && method === "GET") return accessOverview(u);
+      if(route === "admin/access" && method === "POST") return manageAccess(u,body);
       if (method !== "GET") await rateLimit(`api:${u.id}`, 120, 60);
+      if (route === "bookings" && method === "GET") return bookingDashboard(u);
+      if (route === "bookings/slots" && method === "POST") return editSlot(u,body);
       if (route === "workspace" && method === "GET") {
         if (settings().mode === "simulation") {
           const expired = await rows<Session>(
@@ -253,6 +262,14 @@ async function handler(request: Request, context: Context) {
       }
       if (route.startsWith("admin/")) {
         requireThat(u.admin, 403, "Owner access required");
+        if(route === "admin/overview" && method === "GET") return adminOverview(u);
+        if(route === "admin/person" && method === "GET") return adminPerson(u,z.string().uuid().parse(new URL(request.url).searchParams.get('id')));
+        if(route === "admin/conversation" && method === "GET") return adminConversation(u,z.string().uuid().parse(new URL(request.url).searchParams.get('id')));
+        if(route === "admin/posthog" && method === "GET") {
+          const target=new URL(process.env.POSTHOG_PROJECT_URL||'https://eu.posthog.com');
+          requireThat(target.protocol==='https:'&&['eu.posthog.com','us.posthog.com','app.posthog.com'].includes(target.hostname),422,'PostHog project URL is not configured correctly.');
+          return NextResponse.redirect(target);
+        }
         if (route === "admin/reset" && method === "POST") {
           const v = z
             .object({
@@ -351,6 +368,11 @@ async function handler(request: Request, context: Context) {
       throw new AppError(404, "Not found");
     };
     const result = await answer();
+    const event = method === 'POST' ? analyticsEvent(route) : undefined;
+    if(event && posthogConfigured() && (route !== 'auth/login' || body.token)) {
+      const actor = await identity().catch(()=>null);
+      if(actor) after(async()=>{const accepted=await captureStudioEvent(event,actor.id);if(!accepted)console.warn('Studio analytics event was not accepted.');});
+    }
     return result instanceof Response
       ? result
       : NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });

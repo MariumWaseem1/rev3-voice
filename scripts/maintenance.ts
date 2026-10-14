@@ -1,6 +1,7 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
 import { reconcileSessions } from "../src/lib/sessions";
+import { deliverBookingEmails } from "../src/lib/bookings";
 import { cleanup } from "../src/lib/workspace";
 let stopping = false;
 process.on("SIGTERM", () => {
@@ -11,6 +12,7 @@ async function main() {
   while (!stopping) {
     try {
       await reconcileSessions();
+      await deliverBookingEmails();
       if (runs++ % 360 === 0) await cleanup();
     } catch {
       console.error(

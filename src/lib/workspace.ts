@@ -135,6 +135,7 @@ export async function deleteData(u: Identity, account: boolean) {
   await locked(async (tx) => {
     if (account) await tx.execute(sql`DELETE FROM users WHERE id=${u.id}`);
     else {
+      await tx.execute(sql`DELETE FROM booking_slots WHERE workspace_id=${u.workspace_id}`);
       await tx.execute(
         sql`DELETE FROM feedback WHERE workspace_id=${u.workspace_id}`,
       );

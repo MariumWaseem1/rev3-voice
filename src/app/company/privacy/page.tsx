@@ -1,6 +1,7 @@
 import Link from "next/link";
 export default function Page() {
   const sections = [
+    "Studio review and analytics\nAuthorised Rev3 team members can review account sign-ups, saved conversations, booking activity and feedback to support users and improve Studio. Product analytics may be processed with PostHog when enabled. Conversation text, contact details and booking contents are not sent to PostHog by this integration. The admin dashboard is restricted to approved owner accounts.",
     "\nInformation we collect\nWhen you submit an enquiry, we may collect your name, business name, email address, phone number and the information you include in your message. We may also receive basic technical information needed to operate and protect the website, such as request logs, browser type and approximate device information.",
     "\nHow we use it\nWe use enquiry information to respond to you, arrange demonstrations or meetings, understand what you are looking for and take steps towards providing our services. We use limited technical information to keep the website reliable, secure and working correctly.",
     "\nOur legal reasons\nDepending on the circumstances, we process information because you have asked us to take steps before entering into a contract, because it is necessary for our legitimate interests in responding to enquiries and operating our website, or because you have given consent.",

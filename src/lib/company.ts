@@ -3,7 +3,17 @@ import { z } from "zod";
 import { sql, one, rows, locked } from "./db";
 import { hash, newToken, rateLimit } from "./security";
 import { requireThat } from "./errors";
-import { establish, type Identity } from "./auth";
+import { login, type Identity } from "./auth";
+export const applicationSchema=z.object({
+ role:z.string().trim().min(1).max(100),
+ callsPerWeek:z.enum(['Under 20','20-100','101-500','Over 500','Not sure yet']),
+ teamSize:z.enum(['Just me','2-10','11-50','51+']),
+ currentHandling:z.enum(['Me or my team','Receptionist','Answering service','Mostly missed / voicemail','Other']),
+ goal:z.enum(['Bookings','Customer questions','Follow-ups','Admin tasks','Other']),
+ tools:z.string().trim().max(500),
+ readiness:z.enum(['This week','This month','Later']),
+ feedback:z.enum(['Yes','Not right now'])
+}).strict();
 export const enquirySchema = z
   .object({
     kind: z.enum(["studio", "service", "contact"]),
@@ -16,8 +26,9 @@ export const enquirySchema = z
     category: z.string().trim().min(1).max(100),
     enquiry: z.string().trim().min(1).max(2000),
     website: z.string().max(500).optional(),
+    application: applicationSchema.optional(),
   })
-  .strict();
+  .strict().superRefine((v,ctx)=>{if(v.kind==="studio"&&!v.application)ctx.addIssue({code:"custom",path:["application"],message:"Please complete the Studio application details."});});
 export async function sendMail(
   to: string,
   subject: string,
@@ -64,14 +75,14 @@ export async function receiveEnquiry(input: unknown) {
     .database()
     .then((db) =>
       db.execute(
-        sql`INSERT INTO company_enquiries(id,kind,name,business,email,category,enquiry) VALUES(${id},${data.kind},${data.name},${data.business},${data.email},${data.category},${data.enquiry})`,
+        sql`INSERT INTO company_enquiries(id,kind,name,business,email,category,enquiry,application) VALUES(${id},${data.kind},${data.name},${data.business},${data.email},${data.category},${data.enquiry},${data.application?JSON.stringify(data.application):null}::jsonb)`,
       ),
     );
   try {
     await sendMail(
       process.env.ENQUIRY_TO_EMAIL || "info@rev3.uk",
       `Rev3 ${data.kind === "studio" ? "Studio application" : "enquiry"}: ${data.business}`,
-      `Type: ${data.kind}\nName: ${data.name}\nBusiness: ${data.business}\nEmail: ${data.email}\nCategory: ${data.category}\n\n${data.enquiry}`,
+      `Type: ${data.kind}\nName: ${data.name}\nBusiness: ${data.business}\nEmail: ${data.email}\nCategory: ${data.category}\n\n${data.enquiry}${data.application ? "\n\nStudio qualification details:\n"+Object.entries(data.application).map(([key,value])=>`${key}: ${value}`).join("\n") : ""}`,
       data.email,
       `enquiry-${id}`,
     );
@@ -103,7 +114,7 @@ export async function companyLeads(u: Identity) {
     sql`SELECT * FROM company_enquiries ORDER BY created_at DESC LIMIT 200`,
   );
 }
-export async function issueInvitation(u: Identity, emailInput: unknown) {
+export async function issueInvitation(u: Identity, emailInput: unknown, deliver = true) {
   requireThat(u.admin, 403, "Owner access required");
   const email = z.email().max(254).parse(emailInput).toLowerCase();
   await rateLimit(`issue-invite:${u.id}`, 20, 3600);
@@ -111,13 +122,13 @@ export async function issueInvitation(u: Identity, emailInput: unknown) {
     code = newToken();
   await locked((tx) =>
     tx.execute(
-      sql`INSERT INTO studio_invitations(id,email,token_hash,created_by,expires_at) VALUES(${id},${email},${hash(code)},${u.id},now())`,
+      sql`INSERT INTO studio_invitations(id,email,token_hash,created_by,expires_at) VALUES(${id},${email},${hash(code)},${u.id},now()+interval '7 days')`,
     ),
   );
-  await sendMail(
+  if(deliver) await sendMail(
     email,
     "Your Rev3 Studio invitation",
-    `You’re invited to Rev3 Studio, our co-creation programme.\n\nOpen ${process.env.STUDIO_ORIGIN || "https://voice.rev3.uk"}/access and enter this access code:\n\n${code}\n\nThis code is for you, works once and expires in 7 days. Once inside, you can use email sign-in to return.\n\nThe Rev3 team`,
+    `You’re invited to Rev3 Studio, our co-creation programme.\n\nOpen ${process.env.STUDIO_ORIGIN || "https://voice.rev3.uk"}/access and enter this access code:\n\n${code}\n\nThis code is for you, works once and expires in 7 days. Verify this email address to enter. After joining, use your approved email to return.\n\nThe Rev3 team`,
     undefined,
     `invite-${id}`,
   );
@@ -126,33 +137,11 @@ export async function issueInvitation(u: Identity, emailInput: unknown) {
       sql`UPDATE studio_invitations SET expires_at=now()+interval '7 days' WHERE id=${id}`,
     ),
   );
-  return { sent: true };
+  return { sent: deliver, code, email };
 }
-export async function redeemInvitation(input: unknown) {
-  await rateLimit("studio-code-attempts", 1000, 3600);
-  const code = z.string().trim().min(30).max(100).parse(input);
-  const email = await locked(async (tx) => {
-    const invitation = await one<{
-      id: string;
-      email: string;
-      created_by: string;
-    }>(
-      sql`UPDATE studio_invitations SET redeemed_at=now() WHERE token_hash=${hash(code)} AND redeemed_at IS NULL AND revoked_at IS NULL AND expires_at>now() RETURNING id,email,created_by`,
-      tx,
-    );
-    requireThat(
-      invitation,
-      401,
-      "That access code is invalid, expired or already used. You can sign in by email if you have already joined.",
-    );
-    await tx.execute(
-      sql`INSERT INTO studio_members(email,approved_by) VALUES(${invitation.email},${invitation.created_by}) ON CONFLICT DO NOTHING`,
-    );
-    return invitation.email;
-  });
-  const existing = await one<{ provider_id: string }>(
-    sql`SELECT provider_id FROM users WHERE lower(email)=${email} ORDER BY created_at LIMIT 1`,
-  );
-  await establish(existing?.provider_id || `invitation-${hash(email)}`, email);
-  return { verified: true };
+export async function redeemInvitation(input: unknown, emailInput: unknown, token?:string) {
+  await rateLimit("studio-code-attempts",1000,3600);
+  const code=z.string().trim().min(30).max(100).parse(input);
+  const email=z.email().max(254).parse(emailInput).toLowerCase();
+  return login(email,token,code);
 }

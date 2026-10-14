@@ -1,3 +1,4 @@
+import { publishedSlot, queueBookingEmails } from "./bookings";
 import { randomUUID } from "node:crypto";
 import { DateTime } from "luxon";
 import { sql, one, rows, locked, json, type Executor } from "./db";
@@ -5,7 +6,7 @@ import { toolSchema, type Configuration } from "./schemas";
 import { type Session } from "./sessions";
 import { AppError, requireThat } from "./errors";
 import { hash } from "./security";
-import { candidateSlots, slotWithinHours } from "./calendar";
+import { slotWithinHours } from "./calendar";
 type Booking = {
   id: string;
   workspace_id: string;
@@ -38,8 +39,7 @@ async function conflict(
   except = "",
 ) {
   return !!(await one(
-    sql`SELECT id FROM demo_bookings WHERE workspace_id=${workspace} AND status='confirmed' AND starts_at<${end}::timestamptz AND ends_at>${start}::timestamptz AND id::text<>${except}
-    UNION ALL SELECT id FROM demo_resources WHERE workspace_id=${workspace} AND starts_at<${end}::timestamptz AND ends_at>${start}::timestamptz LIMIT 1`,
+    sql`SELECT id FROM demo_bookings WHERE workspace_id=${workspace} AND status='confirmed' AND starts_at<${end}::timestamptz AND ends_at>${start}::timestamptz AND id::text<>${except} LIMIT 1`,
     tx,
   ));
 }
@@ -104,6 +104,12 @@ export async function executeAction(
         await tx.execute(
           sql`INSERT INTO confirmation_previews(id,action_id,channel,body) VALUES(${randomUUID()},${actionId},${channel},${String(result.confirmation)})`,
         );
+    if (status === "success" && result.booking && result.confirmation && s.mode === "live") {
+      const booking = result.booking as Booking;
+      await queueBookingEmails(tx, actionId, s.workspace_id, booking.contact, `${s.snapshot.businessName}\n${String(result.confirmation)}\nCustomer: ${booking.customer}\nService: ${booking.service_name}\nThis booking was made in Rev3 Studio's test calendar.`);
+      result.emailStatus = "queued";
+      await tx.execute(sql`UPDATE action_events SET result=${json(result)} WHERE id=${actionId}`);
+    }
     return { status, ...result };
   });
 }
@@ -119,11 +125,16 @@ async function runTool(
     const service = c.services.find((v) => v.id === a.serviceId);
     requireThat(service && a.date, 422, "Specify a known service and date");
     const slots = [];
-    for (const start of candidateSlots(a.date, service.minutes, c)) {
+    const date = DateTime.fromISO(a.date,{zone:c.timezone});
+    requireThat(date.isValid,422,"Choose a valid date");
+    const offered = await rows<{starts_at:Date}>(sql`SELECT starts_at FROM booking_slots WHERE workspace_id=${s.workspace_id} AND service_id=${service.id} AND starts_at>=${date.startOf('day').toISO()}::timestamptz AND starts_at<${date.plus({days:1}).startOf('day').toISO()}::timestamptz ORDER BY starts_at`,tx);
+    for (const offeredSlot of offered) {
+      const start = new Date(offeredSlot.starts_at).toISOString();
+      if (!slotWithinHours(start,service.minutes,c)) continue;
       const end = DateTime.fromISO(start)
         .plus({ minutes: service.minutes })
         .toISO()!;
-      if (!(await conflict(s.workspace_id, start, end, tx))) slots.push(start);
+      if (await publishedSlot(s.workspace_id, service.id, start, end, tx) && !(await conflict(s.workspace_id, start, end, tx))) slots.push(start);
     }
     return {
       slots,
@@ -221,7 +232,7 @@ async function runTool(
       .plus({ minutes: service.minutes })
       .toISO()!;
     requireThat(
-      !(await conflict(s.workspace_id, a.start, end, tx, b.id)),
+      await publishedSlot(s.workspace_id, service.id, a.start, end, tx) && !(await conflict(s.workspace_id, a.start, end, tx, b.id)),
       409,
       "That demo slot is no longer available. The original booking is unchanged.",
     );
@@ -247,6 +258,7 @@ async function runTool(
     .toISO()!;
   const available =
     slotWithinHours(a.start, service.minutes, c) &&
+    await publishedSlot(s.workspace_id, service.id, a.start, end, tx) &&
     !(await conflict(s.workspace_id, a.start, end, tx));
   if (!available) {
     const id = randomUUID();

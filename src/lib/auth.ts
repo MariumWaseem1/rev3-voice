@@ -1,8 +1,9 @@
+import { approvedEmail, validInvitation, approveVerifiedInvitation } from "./studio-access";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { sql, one, locked } from "./db";
-import { devAuth } from "./config";
+import { devAuth, settings } from "./config";
 import { emailHash, hash, newToken, rateLimit } from "./security";
 import { requireThat } from "./errors";
 export type Identity = {
@@ -30,13 +31,16 @@ export function supabase(admin = false) {
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
 }
-export async function login(email: string, token?: string) {
+export async function login(email: string, token?: string, inviteCode?: string) {
   await rateLimit("auth-global", 1000, 3600);
   await rateLimit(
     `auth:${hash(email.trim().toLowerCase())}`,
     token ? 10 : 3,
     600,
   );
+  email=email.trim().toLowerCase();
+  if(inviteCode) requireThat(await validInvitation(email,inviteCode),401,"That access code is invalid, expired or already used for this email.");
+  else requireThat(await approvedEmail(email),403,"This email has not been approved for Studio. Use your access code or apply at rev3.uk.");
   const client = supabase();
   if (!token) {
     const { error } = await client.auth.signInWithOtp({
@@ -60,14 +64,14 @@ export async function login(email: string, token?: string) {
     401,
     "That code is invalid or expired. Request a new code.",
   );
+  const verifiedId=data.user.id;
   const canonicalEmail=data.user.email.toLowerCase();
-  if(process.env.STUDIO_INVITE_REQUIRED==="true") {
-    const approved=await one(sql`SELECT email FROM studio_members WHERE email=${canonicalEmail}`);
-    const admin=(process.env.ADMIN_IDENTITIES||"").split(",").map(v=>v.trim()).includes(data.user.id);
-    requireThat(approved||admin,403,"Studio is invitation-only. Apply at rev3.uk or enter your invitation code.");
-  }
+  requireThat(canonicalEmail===email,401,"Email verification did not match.");
+  if(inviteCode) await approveVerifiedInvitation(canonicalEmail,inviteCode);
+  else requireThat(await approvedEmail(canonicalEmail),403,"Studio approval is required.");
   const invited=await one<{provider_id:string}>(sql`SELECT provider_id FROM users WHERE lower(email)=${canonicalEmail} AND provider_id LIKE 'invitation-%' LIMIT 1`);
-  await establish(invited?.provider_id||data.user.id, canonicalEmail);
+  if(invited) await locked(tx=>tx.execute(sql`UPDATE users SET provider_id=${verifiedId} WHERE provider_id=${invited.provider_id}`));
+  await establish(data.user.id, canonicalEmail);
   return { verified: true };
 }
 export async function establish(providerId: string, email: string) {
@@ -115,7 +119,8 @@ export async function identity(): Promise<Identity> {
     401,
     "Your sign-in has expired. Sign in again to restore your workspace.",
   );
-  if(process.env.STUDIO_INVITE_REQUIRED==="true" && !(process.env.ADMIN_IDENTITIES||"").split(",").map(v=>v.trim()).includes(user.provider_id)) {
+  requireThat(!user.provider_id.startsWith('invitation-'),401,'Please verify your approved email to continue.');
+  if((process.env.NODE_ENV==='production'||settings().mode==='live'||process.env.STUDIO_INVITE_REQUIRED==="true") && !(process.env.ADMIN_IDENTITIES||"").split(",").map(v=>v.trim()).includes(user.provider_id)) {
     requireThat(await one(sql`SELECT email FROM studio_members WHERE email=${user.email.toLowerCase()}`),403,"Studio invitation required. Apply at rev3.uk.");
   }
   return {

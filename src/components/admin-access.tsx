@@ -1,0 +1,23 @@
+"use client";
+import {useEffect,useState} from 'react';
+type Access={members:{email:string;approved_at:string}[];invitations:{id:string;email:string;expires_at:string;redeemed_at:string|null;revoked_at:string|null}[]};
+type Lead={id:string;kind:string;name:string;business:string;email:string;category:string;enquiry:string;application:Record<string,string>|null};
+const labels:Record<string,string>={role:'Role',callsPerWeek:'Calls per week',teamSize:'Team size',currentHandling:'Current call handling',goal:'First use case',tools:'Tools',readiness:'Ready to test',feedback:'Feedback commitment'};
+async function request<T>(path:string,body?:unknown):Promise<T>{const r=await fetch('/api/admin/'+path,{method:body?'POST':'GET',cache:'no-store',...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error||'Please try again.');return d;}
+export function AdminAccess(){
+ const [data,setData]=useState<Access|null>(null),[leads,setLeads]=useState<Lead[]>([]),[email,setEmail]=useState(''),[message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[code,setCode]=useState('');
+ async function refresh(){const [access,applications]=await Promise.all([request<Access>('access'),request<{enquiries:Lead[]}>('enquiries')]);setData(access);setLeads(applications.enquiries.filter(l=>l.kind==='studio'));}
+ useEffect(()=>{refresh().catch(e=>setError(e.message));},[]);
+ async function act(action:'generate'|'send'|'approve'|'revoke',address=email){setBusy(true);setError('');setMessage('');setCode('');try{
+ if(action==='generate'||action==='send'){const result=await request<{code:string}>('invite',{email:address.trim(),deliver:action==='send'});setCode(result.code);setMessage(action==='send'?'Invitation email sent. Email verification is still required.':'Access code generated. Share it with this recipient. It expires in seven days.');}
+ else {await request('access',{email:address.trim(),operation:action});setMessage(action==='approve'?'Email approved. They can now request an email verification code. No email has been sent.':'Access revoked. Existing sessions and invitation codes have been disabled.');}
+ await refresh();
+ }catch(e){setError(e instanceof Error?e.message:'Please try again.');}finally{setBusy(false);}}
+ return <section className="card admin-access"><h2>Studio access</h2><p>Approve an email or create a code tied to that email. Everyone verifies their inbox before entering.</p>
+ <form onSubmit={e=>{e.preventDefault();void act('generate');}}><label>Recipient email<input type="email" required maxLength={254} value={email} onChange={e=>setEmail(e.target.value)} /></label><div className="admin-access-actions"><button disabled={busy}>Generate access code</button><button type="button" disabled={busy||!email} onClick={()=>act('send')}>Email invitation</button><button type="button" disabled={busy||!email} onClick={()=>act('approve')}>Approve email only</button></div></form>
+ {message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}{code&&<label>New access code (shown only now)<textarea readOnly rows={3} value={code} onFocus={e=>e.target.select()}/></label>}
+ <h3>Applications to review</h3>{!leads.length&&<p>No Studio applications yet.</p>}{leads.map(l=><details className="record" key={l.id}><summary>{l.business} · {l.email}</summary><p>{l.name} · {l.category}</p><p>{l.enquiry}</p>{l.application&&<dl>{Object.entries(l.application).map(([k,v])=><div key={k}><dt>{labels[k]||k}</dt><dd>{v||'Not supplied'}</dd></div>)}</dl>}<button disabled={busy} onClick={()=>{setEmail(l.email);void act('generate',l.email);}}>Generate code</button> <button disabled={busy} onClick={()=>{setEmail(l.email);void act('approve',l.email);}}>Approve email</button></details>)}
+ <h3>Approved emails</h3>{data?.members.length===0&&<p>No approved member emails yet.</p>}{data?.members.map(m=><div className="record" key={m.email}><span>{m.email}</span> <button disabled={busy} onClick={()=>{if(window.confirm(`Revoke access for ${m.email}? This signs them out and invalidates their codes.`))void act('revoke',m.email);}}>Revoke access</button></div>)}
+ <h3>Recent invitations</h3><p>Latest 200 invitations. Existing codes cannot be read back; generate a new one if needed.</p>{data?.invitations.map(i=><div className="record" key={i.id}><span>{i.email} · {i.revoked_at?'Revoked':i.redeemed_at?'Used':new Date(i.expires_at)<new Date()?'Expired':'Awaiting email verification'}</span>{!i.revoked_at&&!i.redeemed_at&&<button disabled={busy} onClick={()=>{if(window.confirm(`Revoke all access and codes for ${i.email}?`))void act('revoke',i.email);}}>Revoke access</button>}</div>)}
+ </section>;
+}

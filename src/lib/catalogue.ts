@@ -31,7 +31,7 @@ export const voices = [
   },
   {
     id: "aura-2-arcas-en",
-    name: "Sam",
+    name: "Jamie",
     language: "English",
     accent: "American",
     style: "Natural, smooth, clear",

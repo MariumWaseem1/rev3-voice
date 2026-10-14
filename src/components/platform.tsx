@@ -1,4 +1,5 @@
 "use client";
+import { StudioAccess } from "./studio-access";
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -9,6 +10,8 @@ import {
   Check,
   ChevronRight,
   ClipboardList,
+  CalendarDays,
+  ChartNoAxesCombined,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -35,6 +38,7 @@ import {
   type Configuration,
 } from "@/lib/schemas";
 import { OwnerEnquiries } from "./company/owner-enquiries";
+import { BookingDashboard } from "./booking-dashboard";
 import { SentimentReport } from "./sentiment-report";
 import { Setup } from "./setup";
 import { ToolChoices } from "./tool-choices";
@@ -144,7 +148,8 @@ const navigation = [
   { name: "Shape Your Receptionist", icon: SlidersHorizontal },
   { name: "Choose a Voice", icon: AudioLines },
   { name: "Your Voice Test", icon: Mic },
-  { name: "Demo Results", icon: ClipboardList },
+  { name: "Demo Results", icon: ChartNoAxesCombined },
+  { name: "Bookings", icon: CalendarDays },
   { name: "Connections", icon: Plug },
   { name: "Your Feedback", icon: MessageSquare },
 ];
@@ -556,6 +561,7 @@ export function Platform() {
         <p>Opening Rev3 Studio…</p>
       </main>
     );
+  if (!workspace && !status?.devAuth) return <StudioAccess/>;
   if (!workspace)
     return (
       <div className="landing">
@@ -741,7 +747,7 @@ export function Platform() {
       </div>
     );
   return (
-    <div className={`app-shell floating-studio ${["Overview", "Shape Your Receptionist", "Choose a Voice", "Your Voice Test", "Demo Results", "Connections", "Your Feedback"].includes(page) ? "orange-welcome" : ""} ${collapsed ? "sidebar-collapsed" : ""}`}>
+    <div className={`app-shell floating-studio ${["Overview", "Shape Your Receptionist", "Choose a Voice", "Your Voice Test", "Demo Results", "Bookings", "Connections", "Your Feedback"].includes(page) ? "orange-welcome" : ""} ${collapsed ? "sidebar-collapsed" : ""}`}>
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
@@ -1021,7 +1027,7 @@ export function Platform() {
                           </button>
                         </Notice>
                       )}
-                      <p className="phone-start-disclosure">Picking up starts your call and saves the conversation and results.</p>
+                      <p className="phone-start-disclosure">Picking up starts your call and saves the conversation and results for review by the Rev3 team. Booking confirmations can be emailed to your confirmed address and the business owner.</p>
                       {status?.mode === "live" ? (
                         <button
                           className="phone-start"
@@ -1203,12 +1209,13 @@ export function Platform() {
                 {!workspace.turns.some(t=>t.session_id===current.id&&t.role==="user")&&<tr><td colSpan={2}>No caller questions were saved for this call.</td></tr>}
                 </tbody></table></div>
                 <SentimentReport turns={workspace.turns.filter(t=>t.session_id===current.id)}/>
-                <h3 className="recap-actions-title">What your agent did</h3>
+                <h3 className="recap-actions-title">What your agent did</h3><button className="secondary" onClick={()=>navigate("Bookings")}>View booking calendar</button>
                 {workspace.actions.some(a=>a.session_id===current.id)?<div className="recap-table-scroll"><table className="recap-table"><thead><tr><th scope="col">Action</th><th scope="col">Outcome</th><th scope="col">Status</th></tr></thead><tbody>{workspace.actions.filter(a=>a.session_id===current.id).map(a=><tr key={a.id}><td>{a.name.replaceAll("_"," ")}</td><td>{a.result.message || "No additional detail recorded."}</td><td>{a.status.replaceAll("_"," ")}</td></tr>)}</tbody></table></div>:<p>No actions were recorded for this call.</p>}
               </section>}
               <div className="form-footer"><p>Next, a little feedback on the tools you use.</p><button className="primary" onClick={()=>navigate("Connections")}>Next: your tools <ArrowRight size={16}/></button></div>
             </div>
           )}
+          {page === "Bookings" && <BookingDashboard configuration={workspace.configuration?.data || null}/>}
           {page === "Connections" && (
             <div className="guided-tools" key="tools">
               <header className="step-guide-header"><div className="talking-orb"><svg className="guide-face" viewBox="0 0 80 40" aria-hidden="true"><ellipse fill="currentColor" cx="27" cy="17" rx="5" ry="7"/><ellipse fill="currentColor" cx="53" cy="17" rx="5" ry="7"/></svg><p>Which tools do you work with?</p></div><div><p className="eyebrow">YOUR TOOLS / 05</p><h1>Tell us about your tools.</h1><p>Help us plan future connections.</p></div></header>
@@ -1388,6 +1395,7 @@ export function Platform() {
               >
                 Review applications, enquiries, feedback and technical failures.
               </Heading>
+              <Link className="primary" href="/admin">Open admin dashboard</Link>
               <OwnerEnquiries/>
               <section className="card">
                 <div className="form-grid">

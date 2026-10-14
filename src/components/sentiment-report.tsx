@@ -3,32 +3,41 @@ type Score = {
   compound: number;
   label: "positive" | "neutral" | "negative";
 };
+const labels = {
+  positive: "Positive wording",
+  neutral: "No clear emotional wording",
+  negative: "Negative wording",
+};
 export function SentimentReport({
   turns,
 }: {
-  turns: { id: string; role: string; sentiment?: Score | null }[];
+  turns: { id: string; role: string; text: string; sentiment?: Score | null }[];
 }) {
-  const caller = turns.filter((t) => t.role === "user"),
-    scored = caller.filter((t) => t.sentiment);
-  const counts = { positive: 0, neutral: 0, negative: 0 };
-  scored.forEach((t) => counts[t.sentiment!.label]++);
-  const total = scored.length,
-    positive = total ? (counts.positive / total) * 100 : 0,
-    neutral = total ? (counts.neutral / total) * 100 : 0;
+  const caller = turns.filter((t) => t.role === "user");
+  // Short confirmations and spelled contact details do not establish customer satisfaction.
+  const conversational = caller.filter(
+    (t) =>
+      !/^\s*(yes|yeah|yep|no|nope|okay|ok|sure|thanks|thank you|what)[.!?\s]*$/i.test(
+        t.text,
+      ) && !/^\s*(?:[a-z]\s+){2,}[a-z][.!?\s]*$/i.test(t.text),
+  );
+  const scored = conversational.filter((t) => t.sentiment);
+  const count = { positive: 0, neutral: 0, negative: 0 };
+  scored.forEach((t) => count[t.sentiment!.label]++);
+  const total = scored.length;
+  const positive = total ? (count.positive / total) * 100 : 0,
+    neutral = total ? (count.neutral / total) * 100 : 0;
   return (
     <section className="sentiment-report">
-      <div>
-        <p className="eyebrow">THE FEEL OF THE CALL</p>
-        <h2>Customer sentiment</h2>
-        <p>
-          Estimated from the caller’s words, using a local English-language
-          model.
-        </p>
-      </div>
+      <p className="eyebrow">WHAT THE CALLER’S WORDS SUGGEST</p>
+      <h2>Language signals</h2>
+      <p>
+        This is a wording check, not a rating of how happy the customer was. A
+        positive phrase can appear in an unhappy conversation.
+      </p>
       {!total ? (
         <p>
-          No sentiment report is available for this call. New calls are analysed
-          when local scoring is running.
+          There isn’t enough scored language to show a breakdown for this call.
         </p>
       ) : (
         <>
@@ -36,49 +45,86 @@ export function SentimentReport({
             <div
               className="sentiment-donut"
               role="img"
-              aria-label={`Positive ${counts.positive}, neutral ${counts.neutral}, negative ${counts.negative} caller turns`}
+              aria-label={`${count.positive} positive, ${count.neutral} without a clear signal, ${count.negative} negative statements`}
               style={{
-                background: `conic-gradient(#91B7AD 0 ${positive}%, #9b9b9b ${positive}% ${positive + neutral}%, #FF441C ${positive + neutral}% 100%)`,
+                background: `conic-gradient(#91B7AD 0 ${positive}%,#9b9b9b ${positive}% ${positive + neutral}%,#FF441C ${positive + neutral}% 100%)`,
               }}
             >
               <span>
                 {total}
-                <small>caller turns</small>
+                <small>
+                  statements
+                  <br />
+                  checked
+                </small>
               </span>
             </div>
             <ul>
               {(["positive", "neutral", "negative"] as const).map((label) => (
                 <li key={label}>
-                  <strong>{label}</strong>
+                  <strong>{labels[label]}</strong>
                   <span>
-                    {Math.round((counts[label] / total) * 100)}% ·{" "}
-                    {counts[label]} turns
+                    {count[label]}{" "}
+                    {count[label] === 1 ? "statement" : "statements"} ·{" "}
+                    {Math.round((count[label] / total) * 100)}%
                   </span>
                 </li>
               ))}
             </ul>
           </div>
-          <h3>How the conversation changed</h3>
-          <div className="sentiment-timeline">
-            {scored.map((turn, i) => (
-              <span
-                key={turn.id}
-                className={turn.sentiment!.label}
-                title={`Turn ${i + 1}: ${turn.sentiment!.label}, score ${turn.sentiment!.compound}`}
-                aria-label={`Turn ${i + 1}: ${turn.sentiment!.label}`}
+          <p>
+            {count.negative > 0
+              ? "Some wording may need attention. Read the negative statements below in context."
+              : "No negative wording was detected in the scored statements. This does not prove the caller was satisfied."}
+          </p>
+          <div className="sentiment-evidence">
+            {(["negative", "positive", "neutral"] as const).map((label) => (
+              <details
+                key={label}
+                open={label === "negative" && count.negative > 0}
               >
-                {i + 1}
-              </span>
+                <summary>
+                  {labels[label]} ({count[label]})
+                </summary>
+                <ul>
+                  {scored
+                    .filter((t) => t.sentiment!.label === label)
+                    .map((t) => (
+                      <li key={t.id}>
+                        <blockquote>“{t.text}”</blockquote>
+                        <p>
+                          {label === "neutral"
+                            ? "The word-based score did not pass either threshold. This can simply be a factual question or request."
+                            : `The model’s combined word score passed the ${label} threshold. Read the full statement: politeness, negation and transcription can change its meaning.`}
+                        </p>
+                      </li>
+                    ))}
+                </ul>
+              </details>
             ))}
           </div>
-          <p className="small">
-            {total} of {caller.length} caller turns analysed. Percentages count
-            turns, not time or certainty. Neutral can mean there was no clear
-            sentiment signal. Sarcasm and transcription errors may affect the
-            result.
-          </p>
         </>
       )}
+      <details>
+        <summary>How is this worked out?</summary>
+        <p>
+          The local VADER English model uses a dictionary of words and rules for
+          emphasis and negation. A score of 0.05 or above is labelled positive;
+          −0.05 or below is negative. Values between are labelled no clear
+          emotional wording. These are word scores, not confidence percentages.
+        </p>
+        <p>
+          You spoke {caller.length} times. The chart counts {total} scored
+          statements after leaving out simple yes/no replies, short
+          acknowledgements and clearly spelled-out details. Each statement
+          counts equally, regardless of length. Context and sarcasm can be
+          missed.
+        </p>
+        <p>
+          The original scores stay saved with your conversation. Open each
+          category above to see exactly which statements it includes.
+        </p>
+      </details>
     </section>
   );
 }

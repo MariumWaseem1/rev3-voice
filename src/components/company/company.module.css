@@ -670,6 +670,10 @@
   font-size: 10px;
 }
 .modal {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  overflow-y: auto;
   color: #f5f6f5;
   background: #232322;
   border: 1px solid #ff8b6855;
@@ -1015,3 +1019,51 @@
 }
 
 .mapPlaceholder{min-height:330px;height:calc(100% - 54px);display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at center,#ff441c22,transparent 70%)}.mapPlaceholder h3{font-size:30px}.mapPlaceholder p{font-size:12px}.mapPlaceholder small{margin-top:10px}
+.screenFrame { position:absolute; width:78%; height:55%; border:1px solid #ffffff60; border-radius:20px; background:linear-gradient(135deg,#ffffff15,#ffffff03); box-shadow:0 30px 80px #0005; animation:screenDissolve 4s ease-in-out both; }
+.screenTop { display:flex; gap:7px; padding:18px; border-bottom:1px solid #ffffff20; }
+.screenTop i { width:5px; height:5px; border-radius:50%; background:#ffffff70; }
+.screenLines { display:grid; gap:16px; padding:30px; }
+.screenLines i { height:7px; width:80%; background:#ffffff20; border-radius:9px; }
+.screenLines i:nth-child(2) { width:58%; }
+.screenLines i:nth-child(3) { width:68%; }
+.voiceHalo { position:absolute; width:85%; aspect-ratio:1; border:1px solid #ff795a45; border-radius:50%; background:radial-gradient(circle,#ff441c20,transparent 66%); animation:speechArrives 4s ease both; }
+.speechWave { position:absolute; width:72%; height:30%; display:flex; align-items:center; justify-content:center; gap:3%; animation:speechArrives 4s ease both; }
+.speechWave i { width:4%; border-radius:20px; background:linear-gradient(#ffb093,#ff542b 50%,#ff441c); box-shadow:0 0 22px #ff441c35; animation:speaking 1.6s ease-in-out infinite alternate; }
+.speakCaption { position:absolute; bottom:13%; color:#fff; font-size:clamp(20px,2.5vw,34px); font-weight:700; letter-spacing:-.04em; animation:speechArrives 4s ease both; }
+@keyframes screenDissolve { 0%,30% { opacity:1; transform:scale(1); filter:blur(0); } 70%,100% { opacity:0; transform:translateY(-12px) scale(.9); filter:blur(12px); visibility:hidden; } }
+@keyframes speechArrives { 0%,30% { opacity:0; transform:translateY(15px) scale(.92); } 75%,100% { opacity:1; transform:translateY(0) scale(1); } }
+@keyframes speaking { from { transform:scaleY(.45); } to { transform:scaleY(1); } }
+@media (prefers-reduced-motion:reduce) { .screenFrame { display:none; } }
+/* Connected portfolio and tools */
+.problemGrid { position:relative; isolation:isolate; }
+.problemGrid article { animation:cardSignal 9s ease-in-out infinite; }
+.problemGrid article:nth-of-type(2) { animation-delay:3s; }
+.problemGrid article:nth-of-type(3) { animation-delay:6s; }
+.connectingSignal { position:absolute; left:5%; right:5%; top:-18px; height:2px; background:#ff441c20; overflow:hidden; }
+.connectingSignal span { display:block; width:20%; height:2px; background:linear-gradient(90deg,transparent,#ff795a,transparent); box-shadow:0 0 15px #ff441c; animation:signalFlow 9s linear infinite; }
+@keyframes signalFlow { from { transform:translateX(-100%); } to { transform:translateX(600%); } }
+@keyframes cardSignal { 0%,32%,100% { border-color:#ff8a6635; } 10%,22% { border-color:#ff795a; box-shadow:0 0 32px #ff441c12; } }
+.toolsSection { max-width:1500px; margin:auto; padding:0 6vw 85px; }
+.toolsHeading { display:flex; justify-content:space-between; align-items:center; gap:24px; margin-bottom:25px; }
+.toolsHeading h2 { font-size:clamp(26px,3vw,40px); margin:0 0 12px; }
+.toolsHeading p { color:#d2d4d2; font-size:16px; }
+.toolsHeading button { flex-shrink:0; font-size:11px; }
+.toolsWindow { overflow:hidden; mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent); }
+.toolsTrack { display:flex; width:max-content; animation:toolsRun 32s linear infinite; }
+.toolsGroup { display:flex; gap:16px; padding-right:16px; }
+.toolsGroup > span { display:flex; align-items:center; gap:12px; padding:18px 24px; border:1px solid #ffffff25; background:#ffffff06; border-radius:14px; font-size:17px; font-weight:650; white-space:nowrap; }
+.toolMark { display:grid; place-items:center; width:34px; height:34px; color:#ff947a; background:#ff441c16; border-radius:9px; }
+.toolsNote { font-size:12px; color:#bfc0bf; margin-top:16px; }
+@keyframes toolsRun { to { transform:translateX(-50%); } }
+.toolsWindow:hover .toolsTrack, .toolsWindow[data-paused="true"] *, .problemGrid[data-paused="true"] * { animation-play-state:paused; }
+.studioCopy .studioHeading { text-align:left; max-width:none; margin:0 0 26px; }
+.studioCopy .studioHeading .eyebrow { justify-content:flex-start; }
+.studioCopy .studioHeading h2 { font-size:clamp(40px,4.5vw,66px); margin:0 0 18px; line-height:1.08; }
+.studioCopy .studioHeading > p:last-child { font-size:18px; color:#d2d4d2; }
+.problemGrid p, .faq details p { font-size:16px; line-height:1.75; }
+@media(max-width:700px) { .toolsSection { padding:0 24px 55px; } .toolsHeading { align-items:flex-start; flex-direction:column; } .toolsGroup > span { font-size:15px; padding:14px 18px; } }
+@media(prefers-reduced-motion:reduce) { .toolsWindow { overflow:auto; mask-image:none; } .toolsGroup[aria-hidden="true"] { display:none; } }
+
+
+/* Give the hero question a more open rhythm. */
+.hero h1 { letter-spacing: 0.015em; }

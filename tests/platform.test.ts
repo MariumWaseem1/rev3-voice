@@ -1,3 +1,5 @@
+import {manageAccess,accessOverview,approveVerifiedInvitation} from "../src/lib/studio-access";
+import { editSlot, bookingDashboard, deliverBookingEmails } from "../src/lib/bookings";
 import {receiveEnquiry, issueInvitation, redeemInvitation, companyLeads} from "../src/lib/company";
 import { beforeAll, beforeEach, describe, it, expect, vi } from "vitest";
 import { randomUUID, createHmac } from "node:crypto";
@@ -11,6 +13,7 @@ vi.mock("next/headers", () => ({
 }));
 import { database, sql, one, rows, locked } from "../src/lib/db";
 import {
+  login,
   establish,
   identity,
   logout,
@@ -106,6 +109,7 @@ const future = () => {
   return d.toISOString();
 };
 async function live() {
+  await locked(tx=>tx.execute(sql`INSERT INTO studio_members(email,approved_by) VALUES('one@example.test','test'),('two@example.test','test') ON CONFLICT DO NOTHING`));
   process.env.APP_MODE = "live";
   process.env.DATABASE_URL = "postgres://test-only";
   process.env.DEMO_ENABLED = "true";
@@ -197,7 +201,7 @@ describe("verified identity and request boundary", () => {
       }),
       { params: Promise.resolve({ path: ["auth", "login"] }) },
     );
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(403);
     await expect(identity()).rejects.toThrow();
   });
   it("rejects cross-origin mutation", async () => {
@@ -278,6 +282,7 @@ describe("one lifetime test and atomic usage", () => {
       "consumed",
     );
     await deleteData(user, true);
+    await manageAccess({...user,admin:true},{operation:"approve",email:"one@example.test"});
     await establish("development-new", "one@example.test");
     user = await identity();
     await saveConfiguration(user, full);
@@ -369,6 +374,7 @@ describe("real persisted demo actions", () => {
     );
   });
   it("commits one booking for concurrent conflicting requests; records the other as request", async () => {
+    await editSlot(user,{operation:"add",serviceId:"repair",start:future()});
     const s = await activeSimulation();
     const args = {
       serviceId: "repair",
@@ -427,6 +433,8 @@ describe("real persisted demo actions", () => {
     ).rejects.toThrow("different action");
   });
   it("reschedules and cancels only with matching workspace and contact", async () => {
+    await editSlot(user,{operation:"add",serviceId:"repair",start:future()});
+    await editSlot(user,{operation:"add",serviceId:"repair",start:new Date(new Date(future()).getTime()+86400000).toISOString()});
     const s = await activeSimulation();
     const created = await executeAction(s.id, {
       name: "create_demo_booking",
@@ -641,22 +649,95 @@ describe("configuration, feedback, previews and privacy", () => {
 });
 
 describe("company applications and Studio access",()=>{
- const lead={kind:"studio",name:"Test",business:"Test business",email:"applicant@example.test",category:"Other",enquiry:"Help with incoming calls",website:""};
+ const lead={kind:"studio",name:"Test",business:"Test business",email:"applicant@example.test",category:"Other",enquiry:"Help with incoming calls",website:"",application:{role:"Owner",callsPerWeek:"20-100",teamSize:"2-10",currentHandling:"Me or my team",goal:"Bookings",tools:"",readiness:"This month",feedback:"Yes"}};
  it("saves applications even when email delivery is unavailable",async()=>{await receiveEnquiry(lead);const saved=await one(sql`SELECT * FROM company_enquiries`);expect(saved.kind).toBe("studio");expect(saved.mail_status).toBe("failed");expect(await rows(sql`SELECT * FROM studio_members`)).toHaveLength(0)});
  it("validates enquiries and ignores honeypot submissions",async()=>{await expect(receiveEnquiry({...lead,email:"bad"})).rejects.toThrow();await receiveEnquiry({...lead,website:"spam"});expect(await rows(sql`SELECT * FROM company_enquiries`)).toHaveLength(0)});
  it("does not expose leads or issue invitations to non-owners",async()=>{await expect(companyLeads(user)).rejects.toThrow("Owner");await expect(issueInvitation(user,lead.email)).rejects.toThrow("Owner")});
- it("emails a one-use invitation and opens the approved workspace",async()=>{
- process.env.RESEND_API_KEY="test-only";let emailBody="";
- vi.stubGlobal("fetch",vi.fn(async(_url,options)=>{emailBody=JSON.parse(options.body).text;return new Response("{}",{status:200})}));
- await issueInvitation({...user,admin:true},lead.email);
- const code=emailBody.split("\n\n")[2];expect(code.length).toBeGreaterThan(30);
- const stored=await one(sql`SELECT * FROM studio_invitations`);expect(stored.token_hash).not.toBe(code);
- await redeemInvitation(code);process.env.STUDIO_INVITE_REQUIRED="true";
+ it("keeps codes pending until the recipient verifies email",async()=>{
+ const result=await issueInvitation({...user,admin:true},lead.email,false);
+ const stored=await one(sql`SELECT * FROM studio_invitations`);expect(stored.token_hash).not.toBe(result.code);
+ expect(await rows(sql`SELECT * FROM studio_members`)).toHaveLength(0);
+ await expect(redeemInvitation(result.code,'other@example.test')).rejects.toThrow('invalid');
+ await approveVerifiedInvitation(lead.email,result.code);
+ expect(await rows(sql`SELECT * FROM studio_members`)).toHaveLength(1);
+ await expect(approveVerifiedInvitation(lead.email,result.code)).rejects.toThrow('already used');
+ });
+ it("rejects unapproved email before sending OTP and protects owner controls",async()=>{
+ const f=vi.fn();vi.stubGlobal('fetch',f);
+ await expect(login('unknown@example.test')).rejects.toThrow('not been approved');expect(f).not.toHaveBeenCalled();
+ await expect(manageAccess(user,{operation:'approve',email:lead.email})).rejects.toThrow('Owner');
+ await expect(accessOverview(user)).rejects.toThrow('Owner');
+ });
+ it("approves emails and revokes membership, sessions and codes",async()=>{
+ const admin={...user,admin:true};await manageAccess(admin,{operation:'approve',email:lead.email});
+ const invitation=await issueInvitation(admin,lead.email,false);
+ await establish('approved-test',lead.email);process.env.STUDIO_INVITE_REQUIRED='true';expect((await identity()).email).toBe(lead.email);
+ await manageAccess(admin,{operation:'revoke',email:lead.email});
+ await expect(identity()).rejects.toThrow('expired');
+ await expect(approveVerifiedInvitation(lead.email,invitation.code)).rejects.toThrow('invalid');
+ });
+ it("requires email OTP before consuming a valid invitation",async()=>{
+ const invite=await issueInvitation({...user,admin:true},lead.email,false);jar.clear();
+ process.env.SUPABASE_URL='https://example.supabase.co';process.env.SUPABASE_ANON_KEY='test';
+ const fetcher=vi.fn(async(url)=>new Response(String(url).includes('/verify')?JSON.stringify({user:{id:'verified-provider',email:lead.email,email_confirmed_at:new Date().toISOString()}}):'{}',{status:200,headers:{'Content-Type':'application/json'}}));
+ vi.stubGlobal('fetch',fetcher);
+ try {
+ expect(await login(lead.email,undefined,invite.code)).toEqual({sent:true});
+ expect(jar.has('rev3_session')).toBe(false);expect((await one(sql`SELECT redeemed_at FROM studio_invitations`)).redeemed_at).toBeNull();
+ expect(await login(lead.email,'123456',invite.code)).toEqual({verified:true});
  expect((await identity()).email).toBe(lead.email);
- await expect(redeemInvitation(code)).rejects.toThrow("already used");
+ expect((await one(sql`SELECT redeemed_at FROM studio_invitations`)).redeemed_at).not.toBeNull();
+ }finally{delete process.env.SUPABASE_URL;delete process.env.SUPABASE_ANON_KEY;}
  });
  it("rejects expired invitations and existing unapproved sessions",async()=>{
  process.env.STUDIO_INVITE_REQUIRED="true";await expect(identity()).rejects.toThrow("invitation required");
- await expect(redeemInvitation("invalid-code-with-more-than-thirty-characters")).rejects.toThrow("invalid");
+ await expect(redeemInvitation("invalid-code-with-more-than-thirty-characters",lead.email)).rejects.toThrow("invalid");
+ });
+});
+
+describe('published booking slots and confirmations',()=>{
+ it('only offers published times, prevents overlap and isolates workspaces',async()=>{
+  const s=await activeSimulation();const date=future().slice(0,10);
+  const available=()=>executeAction(s.id,{name:'check_demo_availability',key:randomUUID(),args:{serviceId:'repair',date}});
+  expect((await available()).slots).toEqual([]);
+  await editSlot(user,{operation:'add',serviceId:'repair',start:future()});
+  expect((await available()).slots).toHaveLength(1);
+  await expect(editSlot(user,{operation:'add',serviceId:'repair',start:future()})).rejects.toThrow('overlaps');
+  const slot=(await bookingDashboard(user)).slots[0];
+  await establish('development-other','other@example.test');const other=await identity();
+  expect((await bookingDashboard(other)).slots).toHaveLength(0);
+  await expect(editSlot(other,{operation:'remove',id:slot.id})).rejects.toThrow('not found');
+ });
+ it('queues both recipients once, preserves booking on mail failure and retries delivery',async()=>{
+  await editSlot(user,{operation:'add',serviceId:'repair',start:future()});await live();
+  const s=await reserve(user,'live');await locked(tx=>activate(s.id,tx));
+  const tool={name:'create_demo_booking',key:randomUUID(),args:{serviceId:'repair',start:future(),customer:'Test caller',contact:'caller@example.test'}};
+  const created=await executeAction(s.id,tool);expect(created.confirmed).toBe(true);
+  await executeAction(s.id,tool);expect(await rows(sql`SELECT * FROM booking_emails`)).toHaveLength(2);
+  const slot=(await bookingDashboard(user)).slots[0];await expect(editSlot(user,{operation:'remove',id:slot.id})).rejects.toThrow('booking');
+  process.env.RESEND_API_KEY='test-only';vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{}',{status:503})));
+  await deliverBookingEmails();expect((await bookingDashboard(user)).bookings).toHaveLength(1);
+  expect((await rows(sql`SELECT * FROM booking_emails`)).every(e=>e.status==='pending')).toBe(true);
+  await locked(tx=>tx.execute(sql`UPDATE booking_emails SET next_attempt_at=now()`));
+  const send=vi.fn().mockResolvedValue(new Response('{}',{status:200}));vi.stubGlobal('fetch',send);
+  await deliverBookingEmails();await deliverBookingEmails();expect(send).toHaveBeenCalledTimes(2);
+  expect((await rows(sql`SELECT * FROM booking_emails`)).every(e=>e.status==='sent')).toBe(true);
+ });
+});
+import { adminOverview, adminPerson, adminConversation } from '../src/lib/admin';
+describe('owner activity access',()=>{
+ it('blocks non-owners from account and conversation data',async()=>{
+  await expect(adminOverview(user)).rejects.toThrow('Owner');
+  await expect(adminPerson(user,user.id)).rejects.toThrow('Owner');
+  await expect(adminConversation(user,randomUUID())).rejects.toThrow('Owner');
+  const response=await GET(new Request('http://localhost:3000/api/admin/overview'),{params:Promise.resolve({path:['admin','overview']})});expect(response.status).toBe(403);
+ });
+ it('shows saved activity to an owner and handles unknown calls',async()=>{
+  const s=await activeSimulation();const owner={...user,admin:true};
+  await locked(tx=>tx.execute(sql`INSERT INTO transcript_turns(id,session_id,role,text) VALUES(${randomUUID()},${s.id},'user','Test conversation')`));
+  expect((await adminOverview(owner)).people).toHaveLength(1);
+  expect((await adminPerson(owner,user.id)).calls).toHaveLength(1);
+  expect((await adminConversation(owner,s.id)).turns[0].text).toBe('Test conversation');
+  await expect(adminConversation(owner,randomUUID())).rejects.toThrow('not found');
  });
 });
